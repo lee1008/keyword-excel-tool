@@ -107,29 +107,23 @@
     .error.show { display: block; }
 
     .table-scroll { overflow-x: auto; }
-    table {
+    table.data-table {
       width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
+      border-collapse: collapse;
       font-size: 12px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      overflow: hidden;
+      border: 1px solid #94a3b8;
     }
-    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
-    th { background: #f1f5f9; font-weight: 600; color: var(--muted); white-space: nowrap; }
-    th.col-seq, td.col-seq { width: 52px; text-align: center; color: var(--muted); }
-    tr:last-child td { border-bottom: none; }
-    tbody tr:hover td { background: #f8fafc; }
-    td input {
-      width: 100%;
-      min-width: 100px;
-      padding: 5px 8px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      font: inherit;
+    table.data-table th,
+    table.data-table td {
+      padding: 8px 10px;
+      text-align: left;
+      border: 1px solid #94a3b8;
+      vertical-align: middle;
     }
-    td input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
+    table.data-table th { background: #f1f5f9; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    table.data-table th.col-seq,
+    table.data-table td.col-seq { width: 52px; text-align: center; color: var(--muted); }
+    table.data-table tbody tr:hover td { background: #f8fafc; }
   </style>
 </head>
 <body>
@@ -155,7 +149,7 @@
         <button class="primary" id="btnExport" disabled>导出 Excel</button>
       </div>
       <div class="table-scroll">
-        <table>
+        <table class="data-table">
           <thead>
             <tr>
               <th class="col-seq">序号</th>
@@ -314,16 +308,10 @@
       <tr data-idx="${i}">
         <td class="col-seq">${esc(displaySeq(row, i))}</td>
         <td>${esc(row.keyword)}</td>
-        <td><input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" /></td>
+        <td>${esc(row.translation)}</td>
         <td>${esc(row.rank)}</td>
         <td>${esc(row.volume)}</td>
       </tr>`).join('');
-
-    tableBody.querySelectorAll('.trans-input').forEach(inp => {
-      inp.addEventListener('input', e => {
-        rows[+e.target.dataset.idx].translation = e.target.value;
-      });
-    });
 
     const filterHint = filteredCount ? `，已剔除周搜索量 < ${MIN_VOLUME} 共 ${filteredCount} 条` : '';
     rowStat.textContent = `共 ${rows.length} 条${filterHint}`;
