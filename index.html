@@ -142,6 +142,24 @@
     }
     td input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
     .empty-hint { text-align: center; color: var(--muted); padding: 32px 16px; }
+    .hint { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    button.sm { padding: 3px 8px; font-size: 12px; }
+    button.ghost { background: #f1f5f9; border-color: transparent; color: var(--muted); }
+    button.ghost:hover { background: #e2e8f0; color: var(--text); }
+    .trans-cell { display: flex; gap: 4px; align-items: center; min-width: 160px; }
+    .trans-cell input { flex: 1; min-width: 0; }
+    .quick-textarea {
+      width: 100%;
+      min-height: 88px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    .quick-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .quick-textarea[readonly] { background: #f8fafc; color: var(--text); }
   </style>
 </head>
 <body>
@@ -160,12 +178,25 @@
       <input type="file" id="fileInput" accept=".xlsx,.xls" hidden />
     </section>
 
+    <section class="panel">
+      <div class="panel-title">额外翻译工具</div>
+      <p class="hint">无需上传 Excel，粘贴关键词（每行一个）快速译为简体中文</p>
+      <textarea id="quickInput" class="quick-textarea" placeholder="每行一个关键词&#10;phone case&#10;wireless charger"></textarea>
+      <div class="toolbar" style="margin-top:8px;">
+        <button class="primary" id="btnQuickTranslate">翻译为中文</button>
+        <button id="btnQuickCopy" disabled>复制结果</button>
+      </div>
+      <textarea id="quickOutput" class="quick-textarea" style="margin-top:8px;" readonly placeholder="翻译结果（每行一条中文）"></textarea>
+      <div class="error" id="quickError" style="margin-top:8px;"></div>
+    </section>
+
     <section class="panel" id="resultPanel" style="display:none;">
       <div class="error" id="errorMsg"></div>
       <div class="info" id="infoMsg"></div>
       <div class="toolbar">
         <span class="stat" id="rowStat"></span>
         <button class="primary" id="btnTranslate" disabled>翻译为中文</button>
+        <button id="btnAltTranslate" disabled>辅助翻译</button>
         <button id="btnExport" disabled>导出 Excel</button>
       </div>
       <div class="table-scroll">
@@ -176,7 +207,8 @@
               <th>关键词 (数据来源于西柚洞察)</th>
               <th>关键词排名</th>
               <th>周搜索量</th>
-              <th>翻译（中文）</th>
+              <th>翻译</th>
+              <th>辅助翻译</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -194,7 +226,8 @@
   const COL_KEYWORD = '关键词 (数据来源于西柚洞察)';
   const COL_RANK = '关键词排名';
   const COL_VOLUME = '周搜索量';
-  const COL_TRANS = '翻译（中文）';
+  const COL_TRANS = '翻译';
+  const COL_ALT_TRANS = '辅助翻译';
   const MIN_VOLUME = 100;
 
   const REQUIRED = [
@@ -216,7 +249,13 @@
   const fileNameEl = document.getElementById('fileName');
   const rowStat = document.getElementById('rowStat');
   const btnTranslate = document.getElementById('btnTranslate');
+  const btnAltTranslate = document.getElementById('btnAltTranslate');
   const btnExport = document.getElementById('btnExport');
+  const btnQuickTranslate = document.getElementById('btnQuickTranslate');
+  const btnQuickCopy = document.getElementById('btnQuickCopy');
+  const quickInput = document.getElementById('quickInput');
+  const quickOutput = document.getElementById('quickOutput');
+  const quickError = document.getElementById('quickError');
 
   function showError(msg) {
     errorMsg.textContent = msg;
@@ -285,6 +324,7 @@
         rank: raw[cols.rank] ?? '',
         volume: volumeRaw,
         translation: '',
+        altTranslation: '',
       });
     }
     if (!data.length) throw new Error(`过滤后无有效数据（已剔除周搜索量 < ${MIN_VOLUME} 共 ${removed} 条）`);
@@ -307,7 +347,11 @@
         <td>${esc(row.keyword)}</td>
         <td>${esc(row.rank)}</td>
         <td>${esc(row.volume)}</td>
-        <td><input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" placeholder="中文翻译" /></td>
+        <td class="trans-cell">
+          <input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" placeholder="简体中文" />
+          <button type="button" class="ghost sm btn-row-trans" data-idx="${i}" title="翻译此行">译</button>
+        </td>
+        <td><input type="text" class="alt-input" data-idx="${i}" value="${esc(row.altTranslation)}" placeholder="备用译文" /></td>
       </tr>`).join('');
 
     tableBody.querySelectorAll('.trans-input').forEach(inp => {
@@ -315,10 +359,19 @@
         rows[+e.target.dataset.idx].translation = e.target.value;
       });
     });
+    tableBody.querySelectorAll('.alt-input').forEach(inp => {
+      inp.addEventListener('input', e => {
+        rows[+e.target.dataset.idx].altTranslation = e.target.value;
+      });
+    });
+    tableBody.querySelectorAll('.btn-row-trans').forEach(btn => {
+      btn.onclick = () => translateRow(+btn.dataset.idx);
+    });
 
     const filterHint = filteredCount ? `，已剔除周搜索量 < ${MIN_VOLUME} 共 ${filteredCount} 条` : '';
     rowStat.textContent = `共 ${rows.length} 条关键词${filterHint}`;
     btnTranslate.disabled = false;
+    btnAltTranslate.disabled = false;
     btnExport.disabled = false;
     resultPanel.style.display = 'block';
   }
@@ -416,14 +469,9 @@
     throw new Error(lastErr || 'Lingva 翻译失败');
   }
 
-  async function translateText(text) {
-    const trimmed = String(text).trim();
-    if (!trimmed) return '';
-    // 已是中文的关键词直接保留
-    if (containsChinese(trimmed) && !/[a-zA-Z]{2,}/.test(trimmed)) return trimmed;
-
+  async function runProviders(trimmed, providers) {
     const errors = [];
-    const tryProvider = async (name, fn) => {
+    for (const [name, fn] of providers) {
       try {
         const result = await fn(trimmed);
         if (isChineseTranslation(trimmed, result)) return result;
@@ -431,20 +479,48 @@
       } catch (err) {
         errors.push(`${name}：${err.message || err}`);
       }
-      return null;
-    };
-
-    for (const [name, fn] of [
-      ['MyMemory', () => translateWithMyMemory(trimmed)],
-      ['Lingva', () => translateWithLingva(trimmed)],
-      ['LibreTranslate', () => translateWithLibre(trimmed)],
-      ['Google', () => translateWithGoogle(trimmed, 'auto')],
-      ['Google(en)', () => translateWithGoogle(trimmed, 'en')],
-    ]) {
-      const result = await tryProvider(name, fn);
-      if (result) return result;
     }
     throw new Error(errors.join('；'));
+  }
+
+  const MAIN_PROVIDERS = [
+    ['MyMemory', t => translateWithMyMemory(t)],
+    ['Lingva', t => translateWithLingva(t)],
+    ['LibreTranslate', t => translateWithLibre(t)],
+    ['Google', t => translateWithGoogle(t, 'auto')],
+    ['Google(en)', t => translateWithGoogle(t, 'en')],
+  ];
+
+  const ALT_PROVIDERS = [
+    ['Google', t => translateWithGoogle(t, 'auto')],
+    ['Google(en)', t => translateWithGoogle(t, 'en')],
+    ['Lingva', t => translateWithLingva(t)],
+    ['LibreTranslate', t => translateWithLibre(t)],
+    ['MyMemory', t => translateWithMyMemory(t)],
+  ];
+
+  async function translateText(text, providers = MAIN_PROVIDERS) {
+    const trimmed = String(text).trim();
+    if (!trimmed) return '';
+    if (containsChinese(trimmed) && !/[a-zA-Z]{2,}/.test(trimmed)) return trimmed;
+    return runProviders(trimmed, providers);
+  }
+
+  async function translateRow(idx) {
+    const row = rows[idx];
+    if (!row) return;
+    hideError();
+    const btn = tableBody.querySelector(`.btn-row-trans[data-idx="${idx}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      row.translation = await translateText(row.keyword);
+      const inp = tableBody.querySelector(`.trans-input[data-idx="${idx}"]`);
+      if (inp) inp.value = row.translation;
+    } catch (err) {
+      showError(`第 ${idx + 1} 行翻译失败：${err.message}`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '译'; }
+    }
   }
 
   async function translateAll() {
@@ -455,11 +531,11 @@
     let firstError = '';
     const pending = rows.filter(r => !r.translation.trim()).length;
     if (!pending) {
-      showInfo('所有行已有中文翻译，无需重复翻译');
+      showInfo('「翻译」列已全部填写，可点「译」单条重译或使用「辅助翻译」');
       btnTranslate.disabled = false;
       return;
     }
-    showInfo('正在将关键词翻译为简体中文，请稍候…');
+    showInfo('正在填充「翻译」列…');
 
     for (let i = 0; i < rows.length; i++) {
       if (rows[i].translation.trim()) continue;
@@ -479,10 +555,74 @@
     btnTranslate.textContent = '翻译为中文';
     btnTranslate.disabled = false;
     if (fail) {
-      showError(`${fail} 条翻译失败${firstError ? '：' + firstError : ''}。可手动填写翻译列后导出`);
+      showError(`${fail} 条「翻译」失败${firstError ? '：' + firstError : ''}。可点行内「译」重试或手动填写`);
     } else {
-      showInfo('已翻译为中文');
+      showInfo('「翻译」列已完成');
     }
+  }
+
+  async function translateAltAll() {
+    hideError();
+    hideInfo();
+    btnAltTranslate.disabled = true;
+    let fail = 0;
+    let firstError = '';
+    showInfo('正在填充「辅助翻译」列（备用引擎）…');
+
+    for (let i = 0; i < rows.length; i++) {
+      btnAltTranslate.textContent = `辅助翻译 ${i + 1}/${rows.length}…`;
+      try {
+        rows[i].altTranslation = await translateText(rows[i].keyword, ALT_PROVIDERS);
+        const inp = tableBody.querySelector(`.alt-input[data-idx="${i}"]`);
+        if (inp) inp.value = rows[i].altTranslation;
+        await sleep(500);
+      } catch (err) {
+        fail++;
+        if (!firstError) firstError = err.message || '未知错误';
+        if (firstError.includes('额度')) break;
+      }
+    }
+
+    btnAltTranslate.textContent = '辅助翻译';
+    btnAltTranslate.disabled = false;
+    if (fail) {
+      showError(`${fail} 条「辅助翻译」失败${firstError ? '：' + firstError : ''}`);
+    } else {
+      showInfo('「辅助翻译」列已完成');
+    }
+  }
+
+  function showQuickError(msg) {
+    quickError.textContent = msg;
+    quickError.classList.add('show');
+  }
+  function hideQuickError() { quickError.classList.remove('show'); }
+
+  async function quickTranslate() {
+    hideQuickError();
+    const lines = quickInput.value.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+    if (!lines.length) return showQuickError('请粘贴至少一个关键词');
+    btnQuickTranslate.disabled = true;
+    btnQuickTranslate.textContent = '翻译中…';
+    const results = [];
+    let fail = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      btnQuickTranslate.textContent = `翻译中 ${i + 1}/${lines.length}…`;
+      try {
+        results.push(await translateText(lines[i]));
+      } catch {
+        results.push('');
+        fail++;
+      }
+      await sleep(400);
+    }
+
+    quickOutput.value = results.join('\n');
+    btnQuickTranslate.textContent = '翻译为中文';
+    btnQuickTranslate.disabled = false;
+    btnQuickCopy.disabled = !results.some(Boolean);
+    if (fail) showQuickError(`${fail} 条翻译失败，对应行为空`);
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -494,6 +634,7 @@
       [COL_RANK]: r.rank,
       [COL_VOLUME]: r.volume,
       [COL_TRANS]: r.translation,
+      [COL_ALT_TRANS]: r.altTranslation,
     }));
     const ws = XLSX.utils.json_to_sheet(out);
     const wb = XLSX.utils.book_new();
@@ -535,7 +676,16 @@
   });
 
   btnTranslate.onclick = () => translateAll();
+  btnAltTranslate.onclick = () => translateAltAll();
   btnExport.onclick = () => exportExcel();
+  btnQuickTranslate.onclick = () => quickTranslate();
+  btnQuickCopy.onclick = () => {
+    if (!quickOutput.value) return;
+    navigator.clipboard.writeText(quickOutput.value).then(() => {
+      btnQuickCopy.textContent = '已复制';
+      setTimeout(() => { btnQuickCopy.textContent = '复制结果'; }, 1500);
+    });
+  };
 })();
   </script>
 </body>
