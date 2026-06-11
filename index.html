@@ -160,9 +160,9 @@
             <tr>
               <th class="col-seq">序号</th>
               <th>关键词 (数据来源于西柚洞察)</th>
+              <th>翻译</th>
               <th>关键词排名</th>
               <th>周搜索量</th>
-              <th>翻译</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -314,9 +314,9 @@
       <tr data-idx="${i}">
         <td class="col-seq">${esc(displaySeq(row, i))}</td>
         <td>${esc(row.keyword)}</td>
+        <td><input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" /></td>
         <td>${esc(row.rank)}</td>
         <td>${esc(row.volume)}</td>
-        <td><input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" /></td>
       </tr>`).join('');
 
     tableBody.querySelectorAll('.trans-input').forEach(inp => {
@@ -341,9 +341,9 @@
     const out = rows.map((r, i) => ({
       [COL_SEQ]: displaySeq(r, i),
       [COL_KEYWORD]: r.keyword,
+      [COL_TRANS]: r.translation,
       [COL_RANK]: r.rank,
       [COL_VOLUME]: r.volume,
-      [COL_TRANS]: r.translation,
     }));
     const ws = XLSX.utils.json_to_sheet(out);
     const wb = XLSX.utils.book_new();
