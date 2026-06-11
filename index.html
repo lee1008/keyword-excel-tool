@@ -146,6 +146,7 @@
       <div class="error" id="errorMsg"></div>
       <div class="toolbar">
         <span class="stat" id="rowStat"></span>
+        <button id="btnToggleSort" disabled>取消排序</button>
         <button class="primary" id="btnExport" disabled>导出 Excel</button>
       </div>
       <div class="table-scroll">
@@ -186,6 +187,8 @@
   ];
 
   let rows = [];
+  let rowsOriginal = [];
+  let isSorted = true;
   let filteredCount = 0;
   let hasSeqCol = false;
   let sourceFileName = '';
@@ -197,6 +200,7 @@
   const errorMsg = document.getElementById('errorMsg');
   const fileNameEl = document.getElementById('fileName');
   const rowStat = document.getElementById('rowStat');
+  const btnToggleSort = document.getElementById('btnToggleSort');
   const btnExport = document.getElementById('btnExport');
 
   function showError(msg) {
@@ -285,8 +289,11 @@
 
     if (!data.length) throw new Error(`过滤后无有效数据（已剔除周搜索量 < ${MIN_VOLUME} 共 ${removed} 条）`);
     filteredCount = removed;
+    return data;
+  }
 
-    data.sort((a, b) => {
+  function sortByRank(data) {
+    return [...data].sort((a, b) => {
       const ra = parseRank(a.rank);
       const rb = parseRank(b.rank);
       if (!Number.isFinite(ra) && !Number.isFinite(rb)) return 0;
@@ -294,8 +301,17 @@
       if (!Number.isFinite(rb)) return -1;
       return ra - rb;
     });
+  }
 
-    return data;
+  function updateSortButton() {
+    btnToggleSort.textContent = isSorted ? '取消排序' : '按排名排序';
+    btnToggleSort.classList.toggle('primary', !isSorted);
+  }
+
+  function applyView() {
+    rows = isSorted ? sortByRank(rowsOriginal) : [...rowsOriginal];
+    updateSortButton();
+    renderTable();
   }
 
   function displaySeq(row, i) {
@@ -314,7 +330,9 @@
       </tr>`).join('');
 
     const filterHint = filteredCount ? `，已剔除周搜索量 < ${MIN_VOLUME} 共 ${filteredCount} 条` : '';
-    rowStat.textContent = `共 ${rows.length} 条${filterHint}`;
+    const sortHint = isSorted ? '，已按排名排序' : '，原始顺序';
+    rowStat.textContent = `共 ${rows.length} 条${filterHint}${sortHint}`;
+    btnToggleSort.disabled = false;
     btnExport.disabled = false;
     resultPanel.style.display = 'block';
   }
@@ -350,8 +368,9 @@
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        rows = parseExcel(e.target.result);
-        renderTable();
+        rowsOriginal = parseExcel(e.target.result);
+        isSorted = true;
+        applyView();
       } catch (err) {
         rows = [];
         resultPanel.style.display = 'none';
@@ -372,6 +391,10 @@
     handleFile(e.dataTransfer.files[0]);
   });
 
+  btnToggleSort.onclick = () => {
+    isSorted = !isSorted;
+    applyView();
+  };
   btnExport.onclick = () => exportExcel();
 })();
   </script>
