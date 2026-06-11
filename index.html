@@ -148,7 +148,7 @@
   <div class="wrap">
     <header class="page-header">
       <h1>关键词提取与翻译 <span style="font-size:12px;font-weight:500;color:var(--primary);">在线版</span></h1>
-      <p>浏览器内完成处理，Excel 不上传服务器；自动提取三列、按排名排序、剔除周搜索量 &lt; 100，支持一键翻译</p>
+      <p>浏览器内完成处理，Excel 不上传服务器；自动提取三列、按排名排序、剔除周搜索量 &lt; 100，一键将英文关键词译为<strong>简体中文</strong></p>
     </header>
 
     <section class="panel">
@@ -165,7 +165,7 @@
       <div class="info" id="infoMsg"></div>
       <div class="toolbar">
         <span class="stat" id="rowStat"></span>
-        <button class="primary" id="btnTranslate" disabled>自动翻译全部</button>
+        <button class="primary" id="btnTranslate" disabled>翻译为中文</button>
         <button id="btnExport" disabled>导出 Excel</button>
       </div>
       <div class="table-scroll">
@@ -176,7 +176,7 @@
               <th>关键词 (数据来源于西柚洞察)</th>
               <th>关键词排名</th>
               <th>周搜索量</th>
-              <th>翻译</th>
+              <th>翻译（中文）</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -194,7 +194,7 @@
   const COL_KEYWORD = '关键词 (数据来源于西柚洞察)';
   const COL_RANK = '关键词排名';
   const COL_VOLUME = '周搜索量';
-  const COL_TRANS = '翻译';
+  const COL_TRANS = '翻译（中文）';
   const MIN_VOLUME = 100;
 
   const REQUIRED = [
@@ -307,7 +307,7 @@
         <td>${esc(row.keyword)}</td>
         <td>${esc(row.rank)}</td>
         <td>${esc(row.volume)}</td>
-        <td><input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" placeholder="输入或自动翻译" /></td>
+        <td><input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" placeholder="中文翻译" /></td>
       </tr>`).join('');
 
     tableBody.querySelectorAll('.trans-input').forEach(inp => {
@@ -329,23 +329,25 @@
     return d.innerHTML;
   }
 
-  async function translateWithMyMemory(text) {
-    const params = new URLSearchParams({ q: text, langpair: 'en|zh-CN' });
-    const res = await fetch(`https://api.mymemory.translated.net/get?${params}`);
-    if (!res.ok) throw new Error('MyMemory 网络错误');
-    const data = await res.json();
-    const status = data.responseStatus;
-    const translated = data.responseData?.translatedText?.trim();
-    if (status === 200 && translated) return translated;
-    if (String(data.responseDetails || '').toLowerCase().includes('quota')) {
-      throw new Error('今日免费翻译额度已用完，请明天再试或手动填写');
-    }
-    throw new Error(data.responseDetails || 'MyMemory 翻译失败');
+  function containsChinese(text) {
+    return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(String(text));
   }
 
-  async function translateWithGoogle(text) {
+  function isGarbageTranslation(text) {
+    return /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID|RATE LIMIT|AUTO.*SAME/i.test(String(text));
+  }
+
+  // 接受译文：必须含中文字符（纯英文关键词译后应有中文）
+  function isChineseTranslation(source, result) {
+    if (!result || isGarbageTranslation(result)) return false;
+    if (containsChinese(result)) return true;
+    // 原文已是中文则保留
+    return containsChinese(source) && result === source;
+  }
+
+  async function translateWithGoogle(text, sl = 'auto') {
     const q = encodeURIComponent(text);
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${q}`;
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=zh-CN&dt=t&q=${q}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Google 网络错误');
     const data = await res.json();
@@ -354,29 +356,93 @@
     return result;
   }
 
+  async function translateWithMyMemory(text) {
+    const pairs = ['en|zh-CN', 'en|zh'];
+    let lastErr = '';
+    for (const langpair of pairs) {
+      const params = new URLSearchParams({ q: text, langpair });
+      const res = await fetch(`https://api.mymemory.translated.net/get?${params}`);
+      if (!res.ok) throw new Error('MyMemory 网络错误');
+      const data = await res.json();
+      const translated = data.responseData?.translatedText?.trim();
+      if (String(data.responseDetails || '').toLowerCase().includes('quota')) {
+        throw new Error('今日免费翻译额度已用完，请明天再试或手动填写');
+      }
+      if (data.responseStatus === 200 && translated && isChineseTranslation(text, translated)) {
+        return translated;
+      }
+      lastErr = data.responseDetails || '未得到中文译文';
+    }
+    throw new Error(lastErr || 'MyMemory 翻译失败');
+  }
+
   async function translateWithLibre(text) {
-    const res = await fetch('https://translate.argosopentech.com/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: text, source: 'en', target: 'zh', format: 'text' }),
-    });
-    if (!res.ok) throw new Error('LibreTranslate 网络错误');
-    const data = await res.json();
-    const result = data.translatedText?.trim();
-    if (!result) throw new Error('LibreTranslate 无结果');
-    return result;
+    const sources = ['auto', 'en'];
+    let lastErr = '';
+    for (const source of sources) {
+      try {
+        const res = await fetch('https://translate.argosopentech.com/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ q: text, source, target: 'zh', format: 'text' }),
+        });
+        if (!res.ok) { lastErr = 'LibreTranslate 网络错误'; continue; }
+        const data = await res.json();
+        const result = data.translatedText?.trim();
+        if (result && isChineseTranslation(text, result)) return result;
+        lastErr = '未得到中文译文';
+      } catch (err) {
+        lastErr = err.message || 'LibreTranslate 失败';
+      }
+    }
+    throw new Error(lastErr || 'LibreTranslate 翻译失败');
+  }
+
+  async function translateWithLingva(text) {
+    const bases = ['https://lingva.garudalinux.org', 'https://lingva.ml'];
+    let lastErr = '';
+    for (const base of bases) {
+      try {
+        const res = await fetch(`${base}/api/v1/auto/zh/${encodeURIComponent(text)}`);
+        if (!res.ok) { lastErr = 'Lingva 网络错误'; continue; }
+        const data = await res.json();
+        const result = data.translation?.trim();
+        if (result && isChineseTranslation(text, result)) return result;
+        lastErr = '未得到中文译文';
+      } catch (err) {
+        lastErr = err.message || 'Lingva 失败';
+      }
+    }
+    throw new Error(lastErr || 'Lingva 翻译失败');
   }
 
   async function translateText(text) {
     const trimmed = String(text).trim();
     if (!trimmed) return '';
+    // 已是中文的关键词直接保留
+    if (containsChinese(trimmed) && !/[a-zA-Z]{2,}/.test(trimmed)) return trimmed;
+
     const errors = [];
-    for (const fn of [translateWithMyMemory, translateWithLibre, translateWithGoogle]) {
+    const tryProvider = async (name, fn) => {
       try {
-        return await fn(trimmed);
+        const result = await fn(trimmed);
+        if (isChineseTranslation(trimmed, result)) return result;
+        errors.push(`${name}：未得到中文译文`);
       } catch (err) {
-        errors.push(err.message || String(err));
+        errors.push(`${name}：${err.message || err}`);
       }
+      return null;
+    };
+
+    for (const [name, fn] of [
+      ['MyMemory', () => translateWithMyMemory(trimmed)],
+      ['Lingva', () => translateWithLingva(trimmed)],
+      ['LibreTranslate', () => translateWithLibre(trimmed)],
+      ['Google', () => translateWithGoogle(trimmed, 'auto')],
+      ['Google(en)', () => translateWithGoogle(trimmed, 'en')],
+    ]) {
+      const result = await tryProvider(name, fn);
+      if (result) return result;
     }
     throw new Error(errors.join('；'));
   }
@@ -389,10 +455,11 @@
     let firstError = '';
     const pending = rows.filter(r => !r.translation.trim()).length;
     if (!pending) {
-      showInfo('所有行已有翻译，无需重复翻译');
+      showInfo('所有行已有中文翻译，无需重复翻译');
       btnTranslate.disabled = false;
       return;
     }
+    showInfo('正在将关键词翻译为简体中文，请稍候…');
 
     for (let i = 0; i < rows.length; i++) {
       if (rows[i].translation.trim()) continue;
@@ -409,12 +476,12 @@
       }
     }
 
-    btnTranslate.textContent = '自动翻译全部';
+    btnTranslate.textContent = '翻译为中文';
     btnTranslate.disabled = false;
     if (fail) {
       showError(`${fail} 条翻译失败${firstError ? '：' + firstError : ''}。可手动填写翻译列后导出`);
     } else {
-      showInfo('翻译完成');
+      showInfo('已翻译为中文');
     }
   }
 
