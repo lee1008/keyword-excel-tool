@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>关键词提取与翻译 · 在线版</title>
+  <style>
+    :root {
+      --bg: #f0f4f8;
+      --card: #fff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --muted: #64748b;
+      --primary: #3b82f6;
+      --primary-dark: #2563eb;
+      --danger: #ef4444;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 20px 16px 32px;
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    .page-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid var(--primary); }
+    .page-header h1 { font-size: 18px; font-weight: 700; }
+    .page-header p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .panel-title::before {
+      content: '';
+      width: 3px;
+      height: 14px;
+      background: var(--primary);
+      border-radius: 2px;
+    }
+
+    .drop-zone {
+      padding: 24px;
+      border: 2px dashed #cbd5e1;
+      border-radius: var(--radius);
+      background: #f8fafc;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--primary);
+      background: #eff6ff;
+      color: #1e40af;
+    }
+    .drop-zone b { color: var(--primary); }
+    .file-name { margin-top: 8px; font-size: 12px; color: #047857; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .stat { font-size: 12px; color: var(--muted); margin-right: auto; }
+
+    button {
+      cursor: pointer;
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-weight: 500;
+      border-radius: 6px;
+      transition: background .15s;
+    }
+    button:hover { background: #f8fafc; }
+    button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    button.primary:hover { background: var(--primary-dark); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: var(--danger);
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      display: none;
+    }
+    .error.show { display: block; }
+    .info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      display: none;
+    }
+    .info.show { display: block; }
+
+    .table-scroll { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { background: #f1f5f9; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    th.col-seq, td.col-seq { width: 52px; text-align: center; color: var(--muted); }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #f8fafc; }
+    td input {
+      width: 100%;
+      min-width: 120px;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font: inherit;
+    }
+    td input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
+    .empty-hint { text-align: center; color: var(--muted); padding: 32px 16px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page-header">
+      <h1>关键词提取与翻译 <span style="font-size:12px;font-weight:500;color:var(--primary);">在线版</span></h1>
+      <p>浏览器内完成处理，Excel 不上传服务器；自动提取三列、按排名排序、剔除周搜索量 &lt; 100，支持一键翻译</p>
+    </header>
+
+    <section class="panel">
+      <div class="panel-title">上传 Excel</div>
+      <div class="drop-zone" id="dropZone">
+        点击或拖拽 <b>.xlsx / .xls</b> 文件到此处
+        <div class="file-name" id="fileName"></div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" hidden />
+    </section>
+
+    <section class="panel" id="resultPanel" style="display:none;">
+      <div class="error" id="errorMsg"></div>
+      <div class="info" id="infoMsg"></div>
+      <div class="toolbar">
+        <span class="stat" id="rowStat"></span>
+        <button class="primary" id="btnTranslate" disabled>自动翻译全部</button>
+        <button id="btnExport" disabled>导出 Excel</button>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-seq">序号</th>
+              <th>关键词 (数据来源于西柚洞察)</th>
+              <th>关键词排名</th>
+              <th>周搜索量</th>
+              <th>翻译</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script>
+(function () {
+  'use strict';
+
+  const COL_SEQ = '序号';
+  const COL_KEYWORD = '关键词 (数据来源于西柚洞察)';
+  const COL_RANK = '关键词排名';
+  const COL_VOLUME = '周搜索量';
+  const COL_TRANS = '翻译';
+  const MIN_VOLUME = 100;
+
+  const REQUIRED = [
+    { key: 'keyword', label: COL_KEYWORD, match: h => h.includes('关键词') && h.includes('西柚洞察') },
+    { key: 'rank', label: COL_RANK, match: h => h.includes('关键词排名') },
+    { key: 'volume', label: COL_VOLUME, match: h => h.includes('周搜索量') },
+  ];
+
+  let rows = [];
+  let filteredCount = 0;
+  let sourceFileName = '';
+
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const resultPanel = document.getElementById('resultPanel');
+  const tableBody = document.getElementById('tableBody');
+  const errorMsg = document.getElementById('errorMsg');
+  const infoMsg = document.getElementById('infoMsg');
+  const fileNameEl = document.getElementById('fileName');
+  const rowStat = document.getElementById('rowStat');
+  const btnTranslate = document.getElementById('btnTranslate');
+  const btnExport = document.getElementById('btnExport');
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.classList.add('show');
+  }
+  function hideError() { errorMsg.classList.remove('show'); }
+  function showInfo(msg) { infoMsg.textContent = msg; infoMsg.classList.add('show'); }
+  function hideInfo() { infoMsg.classList.remove('show'); }
+
+  function normHeader(cell) {
+    return String(cell ?? '').replace(/\s+/g, ' ').trim();
+  }
+
+  function parseNumber(val) {
+    const n = parseFloat(String(val ?? '').replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  const parseVolume = parseNumber;
+  const parseRank = parseNumber;
+
+  function findColumns(headers) {
+    const cols = {};
+    for (const req of REQUIRED) {
+      const idx = headers.findIndex(h => req.match(h));
+      if (idx < 0) throw new Error(`未找到列「${req.label}」，请检查 Excel 表头`);
+      cols[req.key] = idx;
+    }
+    return cols;
+  }
+
+  function parseExcel(buffer) {
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (!aoa.length) throw new Error('Excel 为空');
+
+    // 在前 5 行内寻找表头
+    let headerRow = -1;
+    let cols = null;
+    for (let r = 0; r < Math.min(5, aoa.length); r++) {
+      const headers = (aoa[r] || []).map(normHeader);
+      try {
+        cols = findColumns(headers);
+        headerRow = r;
+        break;
+      } catch { /* 继续找 */ }
+    }
+    if (headerRow < 0 || !cols) throw new Error(`未找到所需列：${REQUIRED.map(c => c.label).join('、')}`);
+
+    const data = [];
+    let removed = 0;
+    for (let r = headerRow + 1; r < aoa.length; r++) {
+      const raw = aoa[r];
+      if (!raw || raw.every(c => c === '' || c == null)) continue;
+      const keyword = String(raw[cols.keyword] ?? '').trim();
+      if (!keyword) continue;
+      const volumeRaw = raw[cols.volume] ?? '';
+      const volumeNum = parseVolume(volumeRaw);
+      if (!Number.isFinite(volumeNum) || volumeNum < MIN_VOLUME) {
+        removed++;
+        continue;
+      }
+      data.push({
+        keyword,
+        rank: raw[cols.rank] ?? '',
+        volume: volumeRaw,
+        translation: '',
+      });
+    }
+    if (!data.length) throw new Error(`过滤后无有效数据（已剔除周搜索量 < ${MIN_VOLUME} 共 ${removed} 条）`);
+    filteredCount = removed;
+    data.sort((a, b) => {
+      const ra = parseRank(a.rank);
+      const rb = parseRank(b.rank);
+      if (!Number.isFinite(ra) && !Number.isFinite(rb)) return 0;
+      if (!Number.isFinite(ra)) return 1;
+      if (!Number.isFinite(rb)) return -1;
+      return ra - rb;
+    });
+    return data;
+  }
+
+  function renderTable() {
+    tableBody.innerHTML = rows.map((row, i) => `
+      <tr data-idx="${i}">
+        <td class="col-seq">${i + 1}</td>
+        <td>${esc(row.keyword)}</td>
+        <td>${esc(row.rank)}</td>
+        <td>${esc(row.volume)}</td>
+        <td><input type="text" class="trans-input" data-idx="${i}" value="${esc(row.translation)}" placeholder="输入或自动翻译" /></td>
+      </tr>`).join('');
+
+    tableBody.querySelectorAll('.trans-input').forEach(inp => {
+      inp.addEventListener('input', e => {
+        rows[+e.target.dataset.idx].translation = e.target.value;
+      });
+    });
+
+    const filterHint = filteredCount ? `，已剔除周搜索量 < ${MIN_VOLUME} 共 ${filteredCount} 条` : '';
+    rowStat.textContent = `共 ${rows.length} 条关键词${filterHint}`;
+    btnTranslate.disabled = false;
+    btnExport.disabled = false;
+    resultPanel.style.display = 'block';
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  async function translateWithMyMemory(text) {
+    const params = new URLSearchParams({ q: text, langpair: 'en|zh-CN' });
+    const res = await fetch(`https://api.mymemory.translated.net/get?${params}`);
+    if (!res.ok) throw new Error('MyMemory 网络错误');
+    const data = await res.json();
+    const status = data.responseStatus;
+    const translated = data.responseData?.translatedText?.trim();
+    if (status === 200 && translated) return translated;
+    if (String(data.responseDetails || '').toLowerCase().includes('quota')) {
+      throw new Error('今日免费翻译额度已用完，请明天再试或手动填写');
+    }
+    throw new Error(data.responseDetails || 'MyMemory 翻译失败');
+  }
+
+  async function translateWithGoogle(text) {
+    const q = encodeURIComponent(text);
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${q}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Google 网络错误');
+    const data = await res.json();
+    const result = data[0]?.map(part => part[0]).join('').trim();
+    if (!result) throw new Error('Google 无结果');
+    return result;
+  }
+
+  async function translateWithLibre(text) {
+    const res = await fetch('https://translate.argosopentech.com/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: text, source: 'en', target: 'zh', format: 'text' }),
+    });
+    if (!res.ok) throw new Error('LibreTranslate 网络错误');
+    const data = await res.json();
+    const result = data.translatedText?.trim();
+    if (!result) throw new Error('LibreTranslate 无结果');
+    return result;
+  }
+
+  async function translateText(text) {
+    const trimmed = String(text).trim();
+    if (!trimmed) return '';
+    const errors = [];
+    for (const fn of [translateWithMyMemory, translateWithLibre, translateWithGoogle]) {
+      try {
+        return await fn(trimmed);
+      } catch (err) {
+        errors.push(err.message || String(err));
+      }
+    }
+    throw new Error(errors.join('；'));
+  }
+
+  async function translateAll() {
+    hideError();
+    hideInfo();
+    btnTranslate.disabled = true;
+    let fail = 0;
+    let firstError = '';
+    const pending = rows.filter(r => !r.translation.trim()).length;
+    if (!pending) {
+      showInfo('所有行已有翻译，无需重复翻译');
+      btnTranslate.disabled = false;
+      return;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].translation.trim()) continue;
+      btnTranslate.textContent = `翻译中 ${i + 1}/${rows.length}…`;
+      try {
+        rows[i].translation = await translateText(rows[i].keyword);
+        const inp = tableBody.querySelector(`.trans-input[data-idx="${i}"]`);
+        if (inp) inp.value = rows[i].translation;
+        await sleep(500);
+      } catch (err) {
+        fail++;
+        if (!firstError) firstError = err.message || '未知错误';
+        if (firstError.includes('额度')) break;
+      }
+    }
+
+    btnTranslate.textContent = '自动翻译全部';
+    btnTranslate.disabled = false;
+    if (fail) {
+      showError(`${fail} 条翻译失败${firstError ? '：' + firstError : ''}。可手动填写翻译列后导出`);
+    } else {
+      showInfo('翻译完成');
+    }
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  function exportExcel() {
+    const out = rows.map((r, i) => ({
+      [COL_SEQ]: i + 1,
+      [COL_KEYWORD]: r.keyword,
+      [COL_RANK]: r.rank,
+      [COL_VOLUME]: r.volume,
+      [COL_TRANS]: r.translation,
+    }));
+    const ws = XLSX.utils.json_to_sheet(out);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '关键词');
+    const base = sourceFileName.replace(/\.xlsx?$/i, '') || '关键词';
+    XLSX.writeFile(wb, `${base}_提取翻译.xlsx`);
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    if (!/\.xlsx?$/i.test(file.name)) return showError('请上传 .xlsx 或 .xls 文件');
+    hideError();
+    sourceFileName = file.name;
+    fileNameEl.textContent = `已选择：${file.name}`;
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        rows = parseExcel(e.target.result);
+        renderTable();
+      } catch (err) {
+        rows = [];
+        resultPanel.style.display = 'none';
+        showError(err.message || '解析失败');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  dropZone.onclick = () => fileInput.click();
+  fileInput.onchange = e => { handleFile(e.target.files[0]); e.target.value = ''; };
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    handleFile(e.dataTransfer.files[0]);
+  });
+
+  btnTranslate.onclick = () => translateAll();
+  btnExport.onclick = () => exportExcel();
+})();
+  </script>
+</body>
+</html>
